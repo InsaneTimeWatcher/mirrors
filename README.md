@@ -131,6 +131,38 @@ stringData:
   token: s.YOURTOKEN
 ```
 
+And it is also possible to authenticate using a Kubernetes:
+```yaml
+apiVersion: mirrors.kts.studio/v1alpha2
+kind: SecretMirror
+metadata:
+  name: mysecret
+spec:
+  source:
+    name: mysecret
+  destination:
+    type: vault
+    vault:
+      addr: https://vault.example.com
+      path: /secret/data/myteam/mysecret
+      auth:
+        kubernetes:
+          secretRef:
+            name: vault-kubernetes
+```
+with the secret containing Kubernetes credentials:
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-kubernetes
+type: Opaque
+stringData:
+  mountPath: mountPath
+  pathToToken: /var/run/secrets/kubernetes.io/serviceaccount/token
+  roleName: role
+```
+
 **But this is highly discouraged, because currently there is no token renewal 
 mechanism in `mirrors` so if your token will expire `mirrors` can do nothing 
 with that, and you will be forced to update a token in the secret.**

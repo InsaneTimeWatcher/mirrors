@@ -1,8 +1,10 @@
 package vaulter
 
 import (
+	"context"
 	"fmt"
 	vault "github.com/hashicorp/vault/api"
+	k8sAuth "github.com/hashicorp/vault/api/auth/kubernetes"
 )
 
 type Vaulter struct {
@@ -50,6 +52,31 @@ func (v *Vaulter) LoginAppRole(appRolePath, roleID, secretID string) error {
 		return err
 	}
 	v.SetToken(resp.Auth.ClientToken)
+	return nil
+}
+func (v *Vaulter) LoginK8SAuth(roleName, mountPath, pathToToken string) error {
+	k8sAuth, err := k8sAuth.NewKubernetesAuth(
+		roleName,
+		k8sAuth.WithMountPath(mountPath),
+		k8sAuth.WithServiceAccountTokenPath(pathToToken),
+	)
+	authInfo, err := v.auth.Login(context.Background(), k8sAuth)
+	fmt.Println("authInfo?")
+	fmt.Println(authInfo.TokenID())
+	if err != nil {
+		return fmt.Errorf("unable to login Kubernetes auth: %w", err)
+	}
+	if authInfo == nil {
+		return fmt.Errorf("no auth info was returned after login")
+	}
+	if err != nil {
+		return err
+	}
+	ClientToken, err := authInfo.TokenID()
+	if err != nil {
+		return fmt.Errorf("unable to read secret: %w", err)
+	}
+	v.SetToken(ClientToken)
 	return nil
 }
 

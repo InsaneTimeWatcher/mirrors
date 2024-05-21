@@ -10,6 +10,7 @@ type VaultAuthType string
 const (
 	VaultAuthTypeAppRole VaultAuthType = "appRole"
 	VaultAuthTypeToken   VaultAuthType = "token"
+	VaultAuthTypeK8SAuth VaultAuthType = "kubernetes"
 )
 
 // VaultAppRoleAuthSpec specifies approle-specific auth data
@@ -39,17 +40,38 @@ type VaultTokenAuthSpec struct {
 	TokenKey string `json:"tokenKey,omitempty"`
 }
 
+// VaultTokenAuthSpec specifies token-specific auth data
+type VaultKubernetesAuthSpec struct {
+	// Reference to a Secret containing roleName , mountPath and pathToToken
+	// +optional
+
+	SecretRef v1.SecretReference `json:"secretRef,omitempty"`
+
+	// roleName Vault prefix. Default: roleName
+	RoleName string `json:"roleName,omitempty"`
+
+	// A key in the SecretRef which contains mountPath value. Default: mountPath
+	MountPath string `json:"mountPath,omitempty"`
+
+	// A key in the SecretRef which contains pathToToken value. Default: pathToToken
+	PathToToken string `json:"pathToToken,omitempty"`
+}
+
 // VaultAuthSpec describes how to authenticate against a Vault server
 type VaultAuthSpec struct {
 	// +optional
 	AppRole *VaultAppRoleAuthSpec `json:"approle,omitempty"`
 	// +optional
 	Token *VaultTokenAuthSpec `json:"token,omitempty"`
+	Kubernetes *VaultKubernetesAuthSpec `json:"kubernetes,omitempty"`
 }
 
 func (s *VaultAuthSpec) Type() VaultAuthType {
 	if s.AppRole != nil && s.AppRole.SecretRef.Name != "" {
 		return VaultAuthTypeAppRole
+	}
+	if s.Kubernetes != nil && s.Kubernetes.SecretRef.Name != "" {
+		return VaultAuthTypeK8SAuth
 	}
 
 	return VaultAuthTypeToken
@@ -86,6 +108,19 @@ func (s *VaultSpec) Default(namespace string) {
 		if s.Auth.Token.SecretRef.Namespace == "" {
 			s.Auth.Token.SecretRef.Namespace = namespace
 		}
+	} else if s.Auth.Type() == VaultAuthTypeK8SAuth {
+		if s.Auth.Kubernetes.RoleName == "" {
+			s.Auth.Kubernetes.RoleName = "roleName"
+		}
+		if s.Auth.Kubernetes.MountPath == "" {
+			s.Auth.Kubernetes.MountPath = "mountPath"
+		}
+		if s.Auth.Kubernetes.PathToToken == "" {
+			s.Auth.Kubernetes.PathToToken = "pathToToken"
+		}
+		if s.Auth.Kubernetes.SecretRef.Namespace == "" {
+			s.Auth.Kubernetes.SecretRef.Namespace = namespace
+		}
 	}
 }
 
@@ -106,6 +141,10 @@ func (s *VaultSpec) Validate() error {
 	} else if s.Auth.Type() == VaultAuthTypeToken {
 		if s.Auth.Token.SecretRef.Name == "" {
 			return errors.New("vault.auth.token.secretRef.name is required when using token auth")
+		}
+	} else if s.Auth.Type() == VaultAuthTypeK8SAuth {
+		if s.Auth.Kubernetes.SecretRef.Name == "" {
+			return errors.New("vault.auth.kubernetes.secretRef.name is required when using kubernetes auth")
 		}
 	}
 

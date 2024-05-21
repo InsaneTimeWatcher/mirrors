@@ -18,6 +18,7 @@ type VaultBackend interface {
 	Token() string
 	SetToken(token string)
 	LoginAppRole(appRolePath, roleID, secretID string) error
+	LoginK8SAuth(roleName, mountPath, pathToToken string) error
 	ReadSecret(path string) (*vault.Secret, error)
 	RetrieveData(path string) (map[string]interface{}, error)
 	WriteData(path string, data map[string]interface{}) error
@@ -98,6 +99,60 @@ func authVaultBackend(ctx context.Context, cli client.Client, vault VaultBackend
 		if err := vault.LoginAppRole(auth.AppRole.AppRolePath, string(roleID), string(secretID)); err != nil {
 			return &reconresult.ReconcileResult{
 				Message:     fmt.Sprintf("error logging in to vault via approle: %s", err),
+				Status:      mirrorsv1alpha2.MirrorStatusError,
+				EventType:   v1.EventTypeWarning,
+				EventReason: "VaultAuthInvalid",
+			}
+		}
+	} else if auth.Type() == mirrorsv1alpha2.VaultAuthTypeK8SAuth {
+		KubernetesRoleSecretName := types.NamespacedName{
+			Name:      auth.Kubernetes.SecretRef.Name,
+			Namespace: auth.Kubernetes.SecretRef.Namespace,
+		}
+		KubernetesRoleSecret, err := FetchSecret(ctx, cli, KubernetesRoleSecretName)
+		if err != nil {
+			return err
+		}
+
+		if KubernetesRoleSecret == nil {
+			return &reconresult.ReconcileResult{
+				Message:     fmt.Sprintf("secret %s for vault kubernetes login not found", KubernetesRoleSecretName),
+				Status:      mirrorsv1alpha2.MirrorStatusPending,
+				EventType:   v1.EventTypeWarning,
+				EventReason: "VaultAuthMissing",
+			}
+		}
+
+		MountPath, exists := KubernetesRoleSecret.Data[auth.Kubernetes.MountPath]
+		if !exists {
+			return &reconresult.ReconcileResult{
+				Message:     fmt.Sprintf("cannot find mountPath under secret %s and key %s", KubernetesRoleSecretName, auth.Kubernetes.MountPath),
+				Status:      mirrorsv1alpha2.MirrorStatusPending,
+				EventType:   v1.EventTypeWarning,
+				EventReason: "VaultAuthMissing",
+			}
+		}
+		RoleName, exists := KubernetesRoleSecret.Data[auth.Kubernetes.RoleName]
+		if !exists {
+			return &reconresult.ReconcileResult{
+				Message:     fmt.Sprintf("cannot find roleName under secret %s and key %s", KubernetesRoleSecretName, auth.Kubernetes.RoleName),
+				Status:      mirrorsv1alpha2.MirrorStatusPending,
+				EventType:   v1.EventTypeWarning,
+				EventReason: "VaultAuthMissing",
+			}
+		}
+		PathToToken, exists := KubernetesRoleSecret.Data[auth.Kubernetes.PathToToken]
+		if !exists {
+			return &reconresult.ReconcileResult{
+				Message:     fmt.Sprintf("cannot find pathToToken under secret %s and key %s", KubernetesRoleSecretName, auth.Kubernetes.PathToToken),
+				Status:      mirrorsv1alpha2.MirrorStatusPending,
+				EventType:   v1.EventTypeWarning,
+				EventReason: "VaultAuthMissing",
+			}
+		}
+		if err := vault.LoginK8SAuth(string(RoleName), string(MountPath), string(PathToToken)); err != nil {
+			return &reconresult.ReconcileResult{
+				Message:     fmt.Sprintf("error logging in to vault via kubernetes: %s", err),
 				Status:      mirrorsv1alpha2.MirrorStatusError,
 				EventType:   v1.EventTypeWarning,
 				EventReason: "VaultAuthInvalid",
