@@ -55,26 +55,24 @@ func (v *Vaulter) LoginAppRole(appRolePath, roleID, secretID string) error {
 	return nil
 }
 func (v *Vaulter) LoginK8SAuth(roleName, mountPath, pathToToken string) error {
-	k8sAuth, err := k8sAuth.NewKubernetesAuth(
+	k8s, err := k8sAuth.NewKubernetesAuth(
 		roleName,
 		k8sAuth.WithMountPath(mountPath),
 		k8sAuth.WithServiceAccountTokenPath(pathToToken),
 	)
-	authInfo, err := v.auth.Login(context.Background(), k8sAuth)
-	fmt.Println("authInfo?")
-	fmt.Println(authInfo.TokenID())
+	authInfo, err := v.auth.Login(context.Background(), k8s)
 	if err != nil {
 		return fmt.Errorf("unable to login Kubernetes auth: %w", err)
 	}
 	if authInfo == nil {
-		return fmt.Errorf("no auth info was returned after login")
+		return fmt.Errorf("no auth info was returned after kubernetes auth")
 	}
 	if err != nil {
 		return err
 	}
 	ClientToken, err := authInfo.TokenID()
 	if err != nil {
-		return fmt.Errorf("unable to read secret: %w", err)
+		return fmt.Errorf("unable to read token in kubernetes auth: %w", err)
 	}
 	v.SetToken(ClientToken)
 	return nil
